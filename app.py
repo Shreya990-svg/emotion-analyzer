@@ -1,51 +1,38 @@
 import streamlit as st
-from openai import OpenAI
-from transformers import pipeline
+import openai
+import os
+from openai import OpenAIError, RateLimitError
 
-# Initialize OpenAI client
-client = OpenAI()
+# --- Set OpenAI API Key ---
+openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# Load emotion classifier
-emotion_model = pipeline("text-classification", model="j-hartmann/emotion-english-distilroberta-base", return_all_scores=False)
-
-# Generate GPT-based response based on detected emotion
+# --- Generate friendly response based on input ---
 def generate_emotional_response(user_input):
-    # Step 1: Detect emotion
-    emotion_result = emotion_model(user_input)
-    detected_emotion = emotion_result[0]['label'].lower()
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": 
+                 "You are a kind and empathetic friend who gives thoughtful, emotionally aware responses. "
+                 "You never mention emotions directly. Just respond like a caring human being listening to someone rant."},
+                {"role": "user", "content": user_input}
+            ],
+            max_tokens=150,
+            temperature=0.8
+        )
+        return response.choices[0].message.content.strip()
+    except RateLimitError:
+        return "I'm getting a bit overwhelmed with requests. Please try again in a few moments."
+    except OpenAIError as e:
+        return f"Oops, something went wrong. Please try again later."
 
-    # Step 2: Generate reply using OpenAI
-    prompt = f"""
-You are a friendly, empathetic, emotionally intelligent person. A friend just said this:
+# --- Streamlit UI ---
+st.set_page_config(page_title="Emotion Buddy", page_icon="😊")
+st.title("🧠 Emotional Companion")
 
-"{user_input}"
+user_input = st.text_input("Talk to me...", placeholder="Type your thoughts here...")
 
-You feel they might be experiencing {detected_emotion}. Respond like a real human friend would — thoughtfully, kindly, and naturally.
-    """
-    
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",  # or "gpt-4" if you have access
-        messages=[
-            {"role": "system", "content": "You are an emotionally intelligent, friendly AI who gives comforting, meaningful replies."},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.7,
-        max_tokens=150
-    )
-
-    return response.choices[0].message.content.strip()
-
-# Streamlit app UI
-st.set_page_config(page_title="Emotionally Intelligent Friend", layout="centered")
-st.title("🧠 Talk to a Thoughtful Friend")
-
-user_input = st.text_area("What's on your mind?", height=200)
-
-if st.button("Send"):
-    if user_input.strip() != "":
-        with st.spinner("Thinking like a good friend..."):
-            reply = generate_emotional_response(user_input)
-            st.markdown("### 🧑‍💬 Reply")
-            st.write(reply)
-    else:
-        st.warning("Please share something so I can respond.")
+if user_input:
+    with st.spinner("Thinking..."):
+        reply = generate_emotional_response(user_input)
+        st.write(reply)
